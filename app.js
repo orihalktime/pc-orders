@@ -1,17 +1,15 @@
 /* ==========================================================================
    ЛОГИКА TELEGRAM WEB APP (EXPLORER STATION)
-   Универсальная отправка команд через Deep Link (работает и в ЛС, и в группах)
+   Бесшовный режим: покупки и сдача заказов БЕЗ ВЫБРОСА ИЗ ПРИЛОЖЕНИЯ
    ========================================================================== */
 
 const tg = window.Telegram?.WebApp;
-const BOT_USERNAME = "npe90_test_bot";
-
 if (tg) {
   tg.ready();
   tg.expand();
 }
 
-// 1. Универсальное считывание параметров игрока
+// 1. Считывание параметров игрока
 const urlParams = new URLSearchParams(window.location.search);
 const startParam = tg?.initDataUnsafe?.start_param || "";
 
@@ -50,12 +48,15 @@ if (startParam && startParam.includes('_')) {
   }
 }
 
-// 2. Инициализация индикаторов
-document.getElementById('h-rub').innerText = player.rub.toLocaleString();
-document.getElementById('val-cpu').innerText = 'T' + player.cpu;
-document.getElementById('val-gpu').innerText = 'T' + player.gpu;
-document.getElementById('val-ram').innerText = 'T' + player.ram;
-document.getElementById('val-ssd').innerText = 'T' + player.ssd;
+// 2. Обновление интерфейса
+function updateUI() {
+  document.getElementById('h-rub').innerText = player.rub.toLocaleString();
+  document.getElementById('val-cpu').innerText = 'T' + player.cpu;
+  document.getElementById('val-gpu').innerText = 'T' + player.gpu;
+  document.getElementById('val-ram').innerText = 'T' + player.ram;
+  document.getElementById('val-ssd').innerText = 'T' + player.ssd;
+}
+updateUI();
 
 // 3. Переключение вкладок
 function switchTab(name) {
@@ -66,23 +67,25 @@ function switchTab(name) {
   document.getElementById('tab-shop').classList.toggle('active', name === 'shop');
 }
 
-// 4. Каталог магазина (8 категорий)
-const shopCatalog = [
-  { key: "gpu", icon: "🎮", name: "Видеокарта", curTier: player.gpu },
-  { key: "cpu", icon: "🧠", name: "Процессор", curTier: player.cpu },
-  { key: "mobo", icon: "🔌", name: "Материнская плата", curTier: player.mobo },
-  { key: "cooler", icon: "❄️", name: "Охлаждение", curTier: player.cooler },
-  { key: "ram", icon: "🧮", name: "Оперативная память", curTier: player.ram },
-  { key: "storage", icon: "💾", name: "Накопитель (SSD/HDD)", curTier: player.ssd },
-  { key: "psu", icon: "🔋", name: "Блок питания", curTier: player.psu },
-  { key: "case", icon: "📦", name: "Корпус станции", curTier: player.cases }
-];
+// 4. Каталог магазина
+function getCatalog() {
+  return [
+    { key: "gpu", icon: "🎮", name: "Видеокарта", curTier: player.gpu },
+    { key: "cpu", icon: "🧠", name: "Процессор", curTier: player.cpu },
+    { key: "mobo", icon: "🔌", name: "Материнская плата", curTier: player.mobo },
+    { key: "cooler", icon: "❄️", name: "Охлаждение", curTier: player.cooler },
+    { key: "ram", icon: "🧮", name: "Оперативная память", curTier: player.ram },
+    { key: "storage", icon: "💾", name: "Накопитель (SSD/HDD)", curTier: player.ssd },
+    { key: "psu", icon: "🔋", name: "Блок питания", curTier: player.psu },
+    { key: "case", icon: "📦", name: "Корпус станции", curTier: player.cases }
+  ];
+}
 
 function renderShop() {
   const container = document.getElementById('shop-container');
   container.innerHTML = '';
 
-  shopCatalog.forEach(item => {
+  getCatalog().forEach(item => {
     const nextTier = item.curTier + 1;
     const price = Math.round(100 * Math.pow(1.5, Math.min(nextTier, 100)));
     const canBuy = player.rub >= price && nextTier <= 100;
@@ -96,7 +99,7 @@ function renderShop() {
       </div>
       <div class="card-title">Текущий: Тир ${item.curTier} / 100</div>
       <div class="card-sub">${nextTier <= 100 ? `Апгрейд до Тира ${nextTier}` : 'Топовая деталь установлена'}</div>
-      <button class="action-btn buy-btn" ${canBuy ? '' : 'disabled'} onclick="sendBuy('${item.key}')">
+      <button class="action-btn buy-btn" ${canBuy ? '' : 'disabled'} onclick="buyPartLive('${item.key}', ${price})">
         ${nextTier > 100 ? 'Пройдено полностью' : canBuy ? `Купить тир ${nextTier}` : 'Не хватает рублей'}
       </button>
     `;
@@ -104,14 +107,32 @@ function renderShop() {
   });
 }
 
-// Покупка детали через Deep Link
-function sendBuy(category) {
-  const deepLink = `https://t.me/${BOT_USERNAME}?start=buy_${category}`;
-  if (tg && tg.openTelegramLink) {
-    tg.openTelegramLink(deepLink);
-    tg.close();
-  } else {
-    window.location.href = deepLink;
+// Покупка детали ПРЯМО НА ЭКРАНЕ (без вылета)
+function buyPartLive(category, price) {
+  if (player.rub < price) return;
+
+  // Списываем рубли и апаем тир прямо в памяти
+  player.rub -= price;
+
+  if (category === 'gpu') player.gpu++;
+  else if (category === 'cpu') player.cpu++;
+  else if (category === 'mobo') player.mobo++;
+  else if (category === 'cooler') player.cooler++;
+  else if (category === 'ram') player.ram++;
+  else if (category === 'storage') player.ssd++;
+  else if (category === 'psu') player.psu++;
+  else if (category === 'case') player.cases++;
+
+  player.lvl = Math.max(1, Math.floor((player.cpu + player.gpu + player.ram + player.ssd) / 4));
+
+  // Обновляем визуал мгновенно
+  updateUI();
+  renderShop();
+  renderOrders();
+
+  // Вибрация Telegram при успешной покупке (Haptic Feedback)
+  if (tg?.HapticFeedback) {
+    tg.HapticFeedback.notificationOccurred('success');
   }
 }
 
@@ -259,23 +280,29 @@ function startExecution(order) {
       doneLine.innerText = `[SUCCESS] Контракт успешно завершён без сбоев.`;
       consoleBox.appendChild(doneLine);
       finishBtn.style.display = 'block';
+      finishBtn.innerText = `💸 Забрать оплату (+${order.reward.rub || order.reward.sat} ${order.reward.rub ? '₽' : 'SAT'})`;
     }
   }, 700);
 }
 
-// Сдача контракта через Deep Link
+// Зачисление награды ПРЯМО НА ЭКРАНЕ (без вылета)
 function finishAndSend() {
   if (!currentOrder) return;
-  
-  // Формат deep-link команды: ord_ID_RUB_SAT
-  const deepLink = `https://t.me/${BOT_USERNAME}?start=ord_${currentOrder.id}_${currentOrder.reward.rub}_${currentOrder.reward.sat}`;
-  
-  if (tg && tg.openTelegramLink) {
-    tg.openTelegramLink(deepLink);
-    tg.close();
-  } else {
-    window.location.href = deepLink;
+
+  player.rub += currentOrder.reward.rub;
+  player.sat += currentOrder.reward.sat;
+
+  updateUI();
+  renderShop();
+
+  // Вибрация успеха в Telegram
+  if (tg?.HapticFeedback) {
+    tg.HapticFeedback.notificationOccurred('success');
   }
+
+  // Закрываем терминал выполнения, возвращаем пользователя к заказам
+  document.getElementById('execution-modal').style.display = 'none';
+  currentOrder = null;
 }
 
 // Запуск
