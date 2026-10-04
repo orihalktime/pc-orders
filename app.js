@@ -1,9 +1,11 @@
 /* ==========================================================================
    ЛОГИКА TELEGRAM WEB APP (EXPLORER STATION)
-   Поддержка: ЛС (Query URL) + Группы (startapp t.me/bot/orders)
+   Универсальная отправка команд через Deep Link (работает и в ЛС, и в группах)
    ========================================================================== */
 
 const tg = window.Telegram?.WebApp;
+const BOT_USERNAME = "npe90_test_bot";
+
 if (tg) {
   tg.ready();
   tg.expand();
@@ -48,7 +50,7 @@ if (startParam && startParam.includes('_')) {
   }
 }
 
-// 2. Инициализация индикаторов в интерфейсе
+// 2. Инициализация индикаторов
 document.getElementById('h-rub').innerText = player.rub.toLocaleString();
 document.getElementById('val-cpu').innerText = 'T' + player.cpu;
 document.getElementById('val-gpu').innerText = 'T' + player.gpu;
@@ -102,18 +104,21 @@ function renderShop() {
   });
 }
 
+// Покупка детали через Deep Link
 function sendBuy(category) {
-  if (tg) {
-    tg.sendData(JSON.stringify({ action: "buy_part", category: category }));
+  const deepLink = `https://t.me/${BOT_USERNAME}?start=buy_${category}`;
+  if (tg && tg.openTelegramLink) {
+    tg.openTelegramLink(deepLink);
+    tg.close();
   } else {
-    alert("Покупка детали: " + category);
+    window.location.href = deepLink;
   }
 }
 
 // 5. Динамические контракты биржи
 const contractsPool = [
   {
-    id: "vfx_explosion",
+    id: "vfx",
     cat: "3D Рендер",
     title: "Рендер взрыва реактора (4K, Blender)",
     client: "Студия «Cinematic FX»",
@@ -130,7 +135,7 @@ const contractsPool = [
     ]
   },
   {
-    id: "llm_lora_train",
+    id: "lora",
     cat: "Нейросети",
     title: "Дообучение LoRA модели на 50 000 строк",
     client: "Стартап «NeuralMind»",
@@ -147,7 +152,7 @@ const contractsPool = [
     ]
   },
   {
-    id: "linux_kernel_rt",
+    id: "rtos",
     cat: "DevOps",
     title: "Сборка Real-Time ядра Linux с ЧПУ-модулями",
     client: "АО «ПромАвтоматика»",
@@ -258,20 +263,18 @@ function startExecution(order) {
   }, 700);
 }
 
+// Сдача контракта через Deep Link
 function finishAndSend() {
   if (!currentOrder) return;
-  const payload = {
-    action: "complete_order",
-    orderId: currentOrder.id,
-    rub: currentOrder.reward.rub,
-    sat: currentOrder.reward.sat,
-    title: currentOrder.title
-  };
-  if (tg) {
-    tg.sendData(JSON.stringify(payload));
+  
+  // Формат deep-link команды: ord_ID_RUB_SAT
+  const deepLink = `https://t.me/${BOT_USERNAME}?start=ord_${currentOrder.id}_${currentOrder.reward.rub}_${currentOrder.reward.sat}`;
+  
+  if (tg && tg.openTelegramLink) {
+    tg.openTelegramLink(deepLink);
+    tg.close();
   } else {
-    alert("Заказ сдан: " + JSON.stringify(payload));
-    document.getElementById('execution-modal').style.display = 'none';
+    window.location.href = deepLink;
   }
 }
 
