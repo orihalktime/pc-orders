@@ -1,0 +1,284 @@
+/* Сброс и базовые настройки с оптической компенсацией */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-weight: 380;                  /* Оптическая компенсация иррадиации */
+  letter-spacing: 0.015em;          /* Микро-трекинг против слияния глифов */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  padding: 12px;
+  padding-bottom: 40px;
+}
+
+/* Навигация / Табы */
+.tabs-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tab-btn {
+  padding: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.tab-btn.active {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--border-active);
+  box-shadow: 0 2px 8px -2px oklch(0 0 0 / 0.3);
+}
+
+/* Верхняя панель */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+}
+
+.header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  letter-spacing: 0.04em;
+}
+
+.header-balance {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* Сводка железа */
+.rig-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.stat-pill {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 4px;
+  text-align: center;
+}
+
+.stat-pill .label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.stat-pill .val {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* Карточки заказов и магазина */
+.tab-content { display: none; }
+.tab-content.active { display: flex; flex-direction: column; gap: 12px; }
+
+.order-card, .shop-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  position: relative;
+  transition: border-color 0.2s;
+}
+
+.order-card.locked {
+  opacity: 0.55;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: oklch(0.70 0.14 260 / 0.12);
+  color: var(--color-primary);
+  border: 1px solid oklch(0.70 0.14 260 / 0.25);
+}
+
+.payout {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-success);
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.card-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.card-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+/* Требования */
+.req-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.req-item {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+}
+
+.req-item.ok {
+  border-color: oklch(0.68 0.12 145 / 0.4);
+  color: var(--color-success);
+}
+
+.req-item.fail {
+  border-color: oklch(0.65 0.16 25 / 0.4);
+  color: var(--color-danger);
+}
+
+/* Кнопки действий */
+.action-btn {
+  width: 100%;
+  padding: 11px;
+  background: var(--color-primary);
+  color: var(--surface-0);
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.action-btn:active { opacity: 0.85; }
+
+.action-btn:disabled {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.action-btn.buy-btn {
+  background: var(--color-success);
+  color: var(--surface-0);
+}
+
+/* Экран выполнения контракта */
+#execution-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--surface-0);
+  z-index: 100;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.monitor-box {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 12px;
+  font-family: var(--font-mono);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.monitor-item span:first-child {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.monitor-item span:last-child {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.console-box {
+  flex: 1;
+  background: oklch(0.12 0.015 260);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-primary);
+  overflow-y: auto;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.progress-bar-fill {
+  width: 0%;
+  height: 100%;
+  background: var(--color-success);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}

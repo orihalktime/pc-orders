@@ -1,0 +1,37 @@
+/* ==========================================================================
+   КОЛОРИМЕТРИЧЕСКАЯ СПЕЦИФИКАЦИЯ ТЁМНОЙ ТЕМЫ (OKLCH)
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* 1. Модель возвышения (Luminance Stacking) */
+  --surface-0: oklch(0.15 0.012 260); /* Холст приложения (нет OLED-smear) */
+  --surface-1: oklch(0.19 0.012 260); /* Карточки заказов, таб-бар */
+  --surface-2: oklch(0.24 0.014 260); /* Модальные окна, консоль, плашки */
+  --surface-3: oklch(0.29 0.016 260); /* Активные кнопки, бейджи */
+
+  /* 2. Контурное освещение (Rim Lighting вместо размытых теней) */
+  --border-subtle: oklch(1 0 0 / 0.08);
+  --border-active: oklch(1 0 0 / 0.16);
+  --border-focus:  oklch(0.70 0.14 260);
+
+  /* 3. Оптическая калибровка типографики (LC 60-75 по APCA) */
+  --text-primary:   oklch(0.92 0.005 260); /* ~92% Lightness (нет ослепления) */
+  --text-secondary: oklch(0.72 0.010 260);
+  --text-muted:     oklch(0.52 0.010 260);
+
+  /* 4. Семантические цвета (Десатурированные для тёмного окружения) */
+  --color-primary:   oklch(0.70 0.14 260); /* Десатурированный акцент Cyan-Blue */
+  --color-success:   oklch(0.68 0.12 145); /* Мягкий функциональный зелёный */
+  --color-warning:   oklch(0.75 0.13 85);  /* Приглушённый янтарный */
+  --color-danger:    oklch(0.65 0.16 25);  /* Десатурированный сигнал тревоги */
+
+  /* 5. Системные константы */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Consolas", monospace;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-elevation: 0 8px 24px -4px oklch(0 0 0 / 0.4), 0 0 1px 1px var(--border-subtle);
+}
