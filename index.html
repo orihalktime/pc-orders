@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Explorer Freelance Exchange</title>
-  <!-- Подключаем официальный скрипт Telegram Web App -->
+  <title>Explorer OS & Exchange</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
@@ -12,9 +11,7 @@
       --card-bg: #161a22;
       --card-border: #232936;
       --accent: #58a6ff;
-      --accent-glow: rgba(88, 166, 255, 0.2);
       --success: #2ea043;
-      --warning: #d29922;
       --danger: #f85149;
       --text: #c9d1d9;
       --text-muted: #8b949e;
@@ -27,7 +24,32 @@
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       padding: 12px;
-      padding-bottom: 30px;
+      padding-bottom: 40px;
+    }
+
+    /* Навигация / Вкладки */
+    .tabs-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .tab-btn {
+      padding: 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      color: var(--text-muted);
+      font-weight: bold;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
+      transition: 0.2s;
+    }
+    .tab-btn.active {
+      background: #1f6feb;
+      color: #fff;
+      border-color: #388bfd;
     }
 
     header {
@@ -40,7 +62,7 @@
       border-radius: 12px;
       margin-bottom: 14px;
     }
-    .header-title { font-size: 14px; font-weight: bold; color: var(--accent); display: flex; align-items: center; gap: 6px; }
+    .header-title { font-size: 14px; font-weight: bold; color: var(--accent); }
     .header-balance { font-size: 13px; font-family: var(--font-mono); color: #fff; }
 
     /* Плашка характеристик рига */
@@ -57,24 +79,25 @@
       padding: 6px;
       text-align: center;
     }
-    .stat-pill .label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+    .stat-pill .label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; }
     .stat-pill .val { font-size: 12px; font-weight: bold; font-family: var(--font-mono); color: #fff; }
 
-    /* Список заказов */
-    .orders-feed { display: flex; flex-direction: column; gap: 12px; }
-    
-    .order-card {
+    /* Контейнеры секций */
+    .tab-content { display: none; }
+    .tab-content.active { display: flex; flex-direction: column; gap: 12px; }
+
+    /* Карточки заказов */
+    .order-card, .shop-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 14px;
       padding: 14px;
       position: relative;
-      transition: transform 0.1s, border-color 0.2s;
     }
     .order-card.locked { opacity: 0.6; filter: grayscale(0.6); }
 
-    .order-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-    .order-category {
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .badge {
       font-size: 10px;
       text-transform: uppercase;
       font-weight: bold;
@@ -84,13 +107,12 @@
       color: var(--accent);
       border: 1px solid rgba(88, 166, 255, 0.3);
     }
-    .order-payout { font-family: var(--font-mono); font-size: 14px; font-weight: bold; color: #3fb950; }
+    .payout { font-family: var(--font-mono); font-size: 14px; font-weight: bold; color: #3fb950; }
 
-    .order-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; color: #fff; }
-    .order-client { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
-    .order-desc { font-size: 12px; line-height: 1.4; color: var(--text); margin-bottom: 12px; }
+    .card-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; color: #fff; }
+    .card-sub { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
+    .card-desc { font-size: 12px; line-height: 1.4; color: var(--text); margin-bottom: 12px; }
 
-    /* Требования */
     .req-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
     .req-item {
       font-size: 11px;
@@ -103,7 +125,7 @@
     .req-item.ok { border-color: var(--success); color: #3fb950; }
     .req-item.fail { border-color: var(--danger); color: #f85149; }
 
-    .take-btn {
+    .action-btn {
       width: 100%;
       padding: 10px;
       background: #1f6feb;
@@ -114,23 +136,21 @@
       font-size: 13px;
       cursor: pointer;
     }
-    .take-btn:active { background: #388bfd; }
-    .take-btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+    .action-btn:active { background: #388bfd; }
+    .action-btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+    .action-btn.buy-btn { background: #238636; }
+    .action-btn.buy-btn:active { background: #2ea043; }
 
-    /* Модальный экран выполнения контракта */
+    /* Модалка выполнения */
     #execution-modal {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(13, 15, 18, 0.95);
+      background: rgba(13, 15, 18, 0.96);
       z-index: 100;
       flex-direction: column;
       padding: 16px;
     }
-
-    .exec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-    .exec-title { font-size: 16px; font-weight: bold; color: #fff; }
-
     .monitor-box {
       background: #000;
       border: 1px solid var(--card-border);
@@ -143,7 +163,6 @@
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
-    .monitor-item { display: flex; flex-direction: column; }
     .monitor-item span:first-child { font-size: 10px; color: var(--text-muted); }
     .monitor-item span:last-child { font-size: 14px; font-weight: bold; color: #58a6ff; }
 
@@ -162,42 +181,23 @@
       flex-direction: column;
       gap: 4px;
     }
-
-    .progress-bar-wrap {
-      width: 100%;
-      height: 10px;
-      background: #21262d;
-      border-radius: 5px;
-      overflow: hidden;
-      margin-bottom: 14px;
-    }
-    .progress-bar-fill {
-      width: 0%;
-      height: 100%;
-      background: #238636;
-      transition: width 0.3s;
-    }
-
-    .exec-finish-btn {
-      padding: 12px;
-      background: var(--success);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-weight: bold;
-      font-size: 14px;
-      display: none;
-    }
+    .progress-bar-wrap { width: 100%; height: 10px; background: #21262d; border-radius: 5px; overflow: hidden; margin-bottom: 14px; }
+    .progress-bar-fill { width: 0%; height: 100%; background: #238636; transition: width 0.3s; }
   </style>
 </head>
 <body>
 
+  <!-- Переключатель вкладок -->
+  <div class="tabs-bar">
+    <div class="tab-btn active" onclick="switchTab('orders')">📋 Биржа заказов</div>
+    <div class="tab-btn" onclick="switchTab('shop')">🛒 Магазин деталей</div>
+  </div>
+
   <header>
     <div class="header-title">🛰️ EXPLORER NET</div>
-    <div class="header-balance">LVL: <span id="rig-lvl">1</span></div>
+    <div class="header-balance">Баланс: <span id="h-rub">0</span> ₽</div>
   </header>
 
-  <!-- Сводка железа станции -->
   <div class="rig-stats">
     <div class="stat-pill"><div class="label">CPU</div><div class="val" id="val-cpu">T1</div></div>
     <div class="stat-pill"><div class="label">GPU</div><div class="val" id="val-gpu">T1</div></div>
@@ -205,58 +205,113 @@
     <div class="stat-pill"><div class="label">SSD</div><div class="val" id="val-ssd">T1</div></div>
   </div>
 
-  <div class="orders-feed" id="orders-container">
-    <!-- Сюда скрипт динамически добавит карточки контрактов -->
+  <!-- ВКЛАДКА 1: БИРЖА ЗАКАЗОВ -->
+  <div id="tab-orders" class="tab-content active">
+    <div id="orders-container"></div>
   </div>
 
-  <!-- Экран выполнения контракта -->
-  <div id="execution-modal">
-    <div class="exec-header">
-      <div class="exec-title" id="m-title">Выполнение заказа...</div>
-    </div>
+  <!-- ВКЛАДКА 2: МАГАЗИН ЖЕЛЕЗА -->
+  <div id="tab-shop" class="tab-content">
+    <div id="shop-container"></div>
+  </div>
 
+  <!-- Экран выполнения -->
+  <div id="execution-modal">
+    <div style="font-size:16px; font-weight:bold; margin-bottom:12px; color:#fff;" id="m-title">Выполнение...</div>
     <div class="monitor-box">
       <div class="monitor-item"><span>НАГРУЗКА БП</span><span id="m-watts">350 W</span></div>
-      <div class="monitor-item"><span>ТЕМПЕРАТУРА ХОТ-СПОТА</span><span id="m-temp">64°C</span></div>
-      <div class="monitor-item"><span>ШИНА ДАННЫХ</span><span id="m-bus">PCIe 4.0</span></div>
+      <div class="monitor-item"><span>ХОТ-СПОТ GPU</span><span id="m-temp">64°C</span></div>
+      <div class="monitor-item"><span>ШИНА PCIe</span><span>x16 4.0</span></div>
       <div class="monitor-item"><span>СТАБИЛЬНОСТЬ</span><span id="m-stab">100%</span></div>
     </div>
-
     <div class="console-box" id="m-console"></div>
-
-    <div class="progress-bar-wrap">
-      <div class="progress-bar-fill" id="m-progress"></div>
-    </div>
-
-    <button class="exec-finish-btn" id="m-finish-btn" onclick="finishAndSend()">💸 Сдать работу и получить оплату</button>
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" id="m-progress"></div></div>
+    <button class="action-btn" style="background:var(--success); display:none;" id="m-finish-btn" onclick="finishAndSend()">💸 Сдать работу боту</button>
   </div>
 
   <script>
     const tg = window.Telegram?.WebApp;
-    if (tg) {
-      tg.ready();
-      tg.expand();
-    }
+    if (tg) { tg.ready(); tg.expand(); }
 
-    // 1. Считываем характеристики железа игрока из URL Query параметров
     const params = new URLSearchParams(window.location.search);
     const player = {
       uid: params.get('uid') || '0',
+      rub: parseInt(params.get('rub')) || 0,
+      sat: parseInt(params.get('sat')) || 0,
       lvl: parseInt(params.get('tier')) || 1,
+      cases: parseInt(params.get('case')) || 1,
+      mobo: parseInt(params.get('mobo')) || 1,
       cpu: parseInt(params.get('cpu')) || 1,
-      gpu: parseInt(params.get('gpu')) || 1,
+      cooler: parseInt(params.get('cooler')) || 1,
       ram: parseInt(params.get('ram')) || 1,
       ssd: parseInt(params.get('storage')) || 1,
-      mobo: parseInt(params.get('mobo')) || 50
+      gpu: parseInt(params.get('gpu')) || 1,
+      psu: parseInt(params.get('psu')) || 1,
+      moboStab: parseInt(params.get('moboStab')) || 50
     };
 
-    document.getElementById('rig-lvl').innerText = player.lvl;
+    document.getElementById('h-rub').innerText = player.rub.toLocaleString();
     document.getElementById('val-cpu').innerText = 'T' + player.cpu;
     document.getElementById('val-gpu').innerText = 'T' + player.gpu;
     document.getElementById('val-ram').innerText = 'T' + player.ram;
     document.getElementById('val-ssd').innerText = 'T' + player.ssd;
 
-    // 2. База реалистичных сценариев заказов
+    function switchTab(name) {
+      document.querySelectorAll('.tab-btn').forEach((b, idx) => {
+        b.classList.toggle('active', (name === 'orders' && idx === 0) || (name === 'shop' && idx === 1));
+      });
+      document.getElementById('tab-orders').classList.toggle('active', name === 'orders');
+      document.getElementById('tab-shop').classList.toggle('active', name === 'shop');
+    }
+
+    // 8 Категорий магазина с примерными ценами следующего тира
+    const shopCatalog = [
+      { key: "gpu", icon: "🎮", name: "Видеокарта", curTier: player.gpu },
+      { key: "cpu", icon: "🧠", name: "Процессор", curTier: player.cpu },
+      { key: "mobo", icon: "🔌", name: "Материнская плата", curTier: player.mobo },
+      { key: "cooler", icon: "❄️", name: "Охлаждение", curTier: player.cooler },
+      { key: "ram", icon: "🧮", name: "Оперативная память", curTier: player.ram },
+      { key: "storage", icon: "💾", name: "Накопитель (SSD/HDD)", curTier: player.ssd },
+      { key: "psu", icon: "🔋", name: "Блок питания", curTier: player.psu },
+      { key: "case", icon: "📦", name: "Корпус станции", curTier: player.cases }
+    ];
+
+    function renderShop() {
+      const container = document.getElementById('shop-container');
+      container.innerHTML = '';
+
+      shopCatalog.forEach(item => {
+        const nextTier = item.curTier + 1;
+        // Примерная формула лестницы цен
+        const price = Math.round(100 * Math.pow(1.5, Math.min(nextTier, 100)));
+        const canBuy = player.rub >= price && nextTier <= 100;
+
+        const card = document.createElement('div');
+        card.className = 'shop-card';
+        card.innerHTML = `
+          <div class="card-header">
+            <span class="badge">${item.icon} ${item.name}</span>
+            <span class="payout">${nextTier <= 100 ? price.toLocaleString() + ' ₽' : 'MAX'}</span>
+          </div>
+          <div class="card-title">Текущий: Тир ${item.curTier} / 100</div>
+          <div class="card-sub">${nextTier <= 100 ? `Апгрейд до Тира ${nextTier}` : 'Топовая деталь установлена'}</div>
+          <button class="action-btn buy-btn" ${canBuy ? '' : 'disabled'} onclick="sendBuy('${item.key}')">
+            ${nextTier > 100 ? 'Пройдено полностью' : canBuy ? `Купить тир ${nextTier}` : 'Не хватает рублей'}
+          </button>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function sendBuy(category) {
+      if (tg) {
+        tg.sendData(JSON.stringify({ action: "buy_part", category: category }));
+      } else {
+        alert("Покупка детали: " + category);
+      }
+    }
+
+    // База заказов
     const contractsPool = [
       {
         id: "vfx_explosion",
@@ -313,40 +368,33 @@
 
     let currentOrder = null;
 
-    // 3. Отрисовка списка заказов
     function renderOrders() {
       const container = document.getElementById('orders-container');
       container.innerHTML = '';
 
       contractsPool.forEach(c => {
-        // Проверка соответствия железа
         let canTake = true;
         let reqsHtml = '';
 
         if (c.req.gpu) {
-          const ok = player.gpu >= c.req.gpu;
-          if (!ok) canTake = false;
+          const ok = player.gpu >= c.req.gpu; if (!ok) canTake = false;
           reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">GPU: T${c.req.gpu} ${ok ? '✓' : '✗'}</div>`;
         }
         if (c.req.cpu) {
-          const ok = player.cpu >= c.req.cpu;
-          if (!ok) canTake = false;
+          const ok = player.cpu >= c.req.cpu; if (!ok) canTake = false;
           reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">CPU: T${c.req.cpu} ${ok ? '✓' : '✗'}</div>`;
         }
         if (c.req.ram) {
-          const ok = player.ram >= c.req.ram;
-          if (!ok) canTake = false;
+          const ok = player.ram >= c.req.ram; if (!ok) canTake = false;
           reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">RAM: T${c.req.ram} ${ok ? '✓' : '✗'}</div>`;
         }
         if (c.req.ssd) {
-          const ok = player.ssd >= c.req.ssd;
-          if (!ok) canTake = false;
+          const ok = player.ssd >= c.req.ssd; if (!ok) canTake = false;
           reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">SSD: T${c.req.ssd} ${ok ? '✓' : '✗'}</div>`;
         }
         if (c.req.mobo) {
-          const ok = player.mobo >= c.req.mobo;
-          if (!ok) canTake = false;
-          reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">Стабильность: ${c.req.mobo}% ${ok ? '✓' : '✗'}</div>`;
+          const ok = player.moboStab >= c.req.mobo; if (!ok) canTake = false;
+          reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">Плата: ${c.req.mobo}% ${ok ? '✓' : '✗'}</div>`;
         }
 
         let payText = '';
@@ -356,15 +404,15 @@
         const card = document.createElement('div');
         card.className = `order-card ${canTake ? '' : 'locked'}`;
         card.innerHTML = `
-          <div class="order-header">
-            <span class="order-category">${c.cat}</span>
-            <span class="order-payout">${payText}</span>
+          <div class="card-header">
+            <span class="badge">${c.cat}</span>
+            <span class="payout">${payText}</span>
           </div>
-          <div class="order-title">${c.title}</div>
-          <div class="order-client">Заказчик: ${c.client}</div>
-          <div class="order-desc">${c.desc}</div>
+          <div class="card-title">${c.title}</div>
+          <div class="card-sub">Заказчик: ${c.client}</div>
+          <div class="card-desc">${c.desc}</div>
           <div class="req-list">${reqsHtml}</div>
-          <button class="take-btn" ${canTake ? '' : 'disabled'} onclick='startExecution(${JSON.stringify(c)})'>
+          <button class="action-btn" ${canTake ? '' : 'disabled'} onclick='startExecution(${JSON.stringify(c)})'>
             ${canTake ? 'Взять контракт в работу' : 'Железо не подходит'}
           </button>
         `;
@@ -372,7 +420,6 @@
       });
     }
 
-    // 4. Интерактивная имитация выполнения заказа
     function startExecution(order) {
       currentOrder = order;
       document.getElementById('execution-modal').style.display = 'flex';
@@ -396,7 +443,6 @@
           consoleBox.appendChild(logLine);
           consoleBox.scrollTop = consoleBox.scrollHeight;
 
-          // Имитируем прыжки датчиков температуры и нагрузки
           document.getElementById('m-watts').innerText = (320 + Math.floor(Math.random() * 80)) + ' W';
           document.getElementById('m-temp').innerText = (65 + Math.floor(Math.random() * 18)) + '°C';
 
@@ -406,17 +452,15 @@
           clearInterval(interval);
           const doneLine = document.createElement('div');
           doneLine.style.color = '#3fb950';
-          doneLine.innerText = `[SUCCESS] Контракт успешно выполнен без сбоев.`;
+          doneLine.innerText = `[SUCCESS] Контракт успешно выполнен!`;
           consoleBox.appendChild(doneLine);
           finishBtn.style.display = 'block';
         }
       }, 700);
     }
 
-    // 5. Отправка подтверждения боту
     function finishAndSend() {
       if (!currentOrder) return;
-
       const payload = {
         action: "complete_order",
         orderId: currentOrder.id,
@@ -424,17 +468,16 @@
         sat: currentOrder.reward.sat,
         title: currentOrder.title
       };
-
       if (tg) {
-        // Отправляем данные боту в чат Telegram
         tg.sendData(JSON.stringify(payload));
       } else {
-        alert("Заказ сдан! (Тестовый режим вне Telegram): " + JSON.stringify(payload));
+        alert("Заказ сдан: " + JSON.stringify(payload));
         document.getElementById('execution-modal').style.display = 'none';
       }
     }
 
     renderOrders();
+    renderShop();
   </script>
 </body>
 </html>
