@@ -1,5 +1,6 @@
 /* ==========================================================================
    ЛОГИКА TELEGRAM WEB APP (EXPLORER STATION)
+   Поддержка: ЛС (Query URL) + Группы (startapp t.me/bot/orders)
    ========================================================================== */
 
 const tg = window.Telegram?.WebApp;
@@ -8,25 +9,46 @@ if (tg) {
   tg.expand();
 }
 
-// 1. Извлечение параметров станции из URL
-const params = new URLSearchParams(window.location.search);
-const player = {
-  uid: params.get('uid') || '0',
-  rub: parseInt(params.get('rub')) || 0,
-  sat: parseInt(params.get('sat')) || 0,
-  lvl: parseInt(params.get('tier')) || 1,
-  cases: parseInt(params.get('case')) || 1,
-  mobo: parseInt(params.get('mobo')) || 1,
-  cpu: parseInt(params.get('cpu')) || 1,
-  cooler: parseInt(params.get('cooler')) || 1,
-  ram: parseInt(params.get('ram')) || 1,
-  ssd: parseInt(params.get('storage')) || 1,
-  gpu: parseInt(params.get('gpu')) || 1,
-  psu: parseInt(params.get('psu')) || 1,
-  moboStab: parseInt(params.get('moboStab')) || 50
+// 1. Универсальное считывание параметров игрока
+const urlParams = new URLSearchParams(window.location.search);
+const startParam = tg?.initDataUnsafe?.start_param || "";
+
+let player = {
+  uid: urlParams.get('uid') || '0',
+  rub: parseInt(urlParams.get('rub')) || 0,
+  sat: parseInt(urlParams.get('sat')) || 0,
+  lvl: parseInt(urlParams.get('tier')) || 1,
+  cases: parseInt(urlParams.get('case')) || 1,
+  mobo: parseInt(urlParams.get('mobo')) || 1,
+  cpu: parseInt(urlParams.get('cpu')) || 1,
+  cooler: parseInt(urlParams.get('cooler')) || 1,
+  ram: parseInt(urlParams.get('ram')) || 1,
+  ssd: parseInt(urlParams.get('storage')) || 1,
+  gpu: parseInt(urlParams.get('gpu')) || 1,
+  psu: parseInt(urlParams.get('psu')) || 1,
+  moboStab: parseInt(urlParams.get('moboStab')) || 50
 };
 
-// 2. Инициализация индикаторов
+// Если открыто из группы через t.me/bot/orders?startapp=...
+if (startParam && startParam.includes('_')) {
+  const parts = startParam.split('_').map(x => parseInt(x) || 0);
+  if (parts.length >= 12) {
+    player.rub = parts[0];
+    player.sat = parts[1];
+    player.lvl = parts[2];
+    player.cases = parts[3];
+    player.mobo = parts[4];
+    player.cpu = parts[5];
+    player.cooler = parts[6];
+    player.ram = parts[7];
+    player.ssd = parts[8];
+    player.gpu = parts[9];
+    player.psu = parts[10];
+    player.moboStab = parts[11];
+  }
+}
+
+// 2. Инициализация индикаторов в интерфейсе
 document.getElementById('h-rub').innerText = player.rub.toLocaleString();
 document.getElementById('val-cpu').innerText = 'T' + player.cpu;
 document.getElementById('val-gpu').innerText = 'T' + player.gpu;
@@ -42,7 +64,7 @@ function switchTab(name) {
   document.getElementById('tab-shop').classList.toggle('active', name === 'shop');
 }
 
-// 4. Каталог 8 категорий железа
+// 4. Каталог магазина (8 категорий)
 const shopCatalog = [
   { key: "gpu", icon: "🎮", name: "Видеокарта", curTier: player.gpu },
   { key: "cpu", icon: "🧠", name: "Процессор", curTier: player.cpu },
@@ -253,6 +275,6 @@ function finishAndSend() {
   }
 }
 
-// Запуск отрисовки
+// Запуск
 renderOrders();
 renderShop();
