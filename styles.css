@@ -99,6 +99,84 @@ header {
   margin-bottom: 16px;
 }
 
+/* Три параллельных слота доски */
+.slot-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.slot-pill {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 6px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.slot-pill.ready {
+  border-color: oklch(0.68 0.12 145 / 0.45);
+}
+
+.slot-pill.busy {
+  border-color: oklch(0.75 0.13 85 / 0.45);
+}
+
+.slot-pill .slot-name {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.slot-pill .slot-state {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.slot-pill.ready .slot-state { color: var(--color-success); }
+.slot-pill.busy .slot-state { color: var(--color-warning); }
+
+/* Очередь синхронизации с чатом */
+.sync-bar {
+  margin-bottom: 8px;
+}
+
+.sync-badge {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.sync-panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sync-text {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-primary);
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  user-select: text;
+  -webkit-user-select: text;
+  word-break: break-all;
+}
+
 .stat-pill {
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);

@@ -27,12 +27,25 @@
     <div class="header-balance">Баланс: <span id="h-rub">0</span> ₽</div>
   </header>
 
+  <!-- Три параллельных слота доски: у каждого свой кулдаун 45 минут -->
+  <section class="slot-strip" id="slot-strip"></section>
+
   <!-- Индикаторы ключевых компонентов -->
   <section class="rig-stats">
     <div class="stat-pill"><div class="label">CPU</div><div class="val" id="val-cpu">T1</div></div>
     <div class="stat-pill"><div class="label">GPU</div><div class="val" id="val-gpu">T1</div></div>
     <div class="stat-pill"><div class="label">RAM</div><div class="val" id="val-ram">T1</div></div>
     <div class="stat-pill"><div class="label">SSD</div><div class="val" id="val-ssd">T1</div></div>
+  </section>
+
+  <!-- Очередь синхронизации с чатом: авторитетный баланс меняет бот -->
+  <section class="sync-bar">
+    <span class="sync-badge" id="sync-badge">✅ Синхронизировано</span>
+  </section>
+  <section class="sync-panel" id="sync-panel" style="display:none;">
+    <div class="card-sub">Отправь команду в чат — баланс и тиры обновит бот. Приложение останется открытым.</div>
+    <code class="sync-text" id="sync-text"></code>
+    <button type="button" class="action-btn" id="sync-copy">📋 Скопировать команду</button>
   </section>
 
   <!-- Раздел: Биржа -->
@@ -48,8 +61,9 @@
   <!-- Экран выполнения контракта -->
   <aside id="execution-modal">
     <h2 id="m-title" style="font-size:16px; font-weight:600; margin-bottom:12px; color:var(--text-primary)">Выполнение...</h2>
-    
+
     <div class="monitor-box">
+      <div class="monitor-item"><span>СЛОТ</span><span id="m-slot">1</span></div>
       <div class="monitor-item"><span>НАГРУЗКА БП</span><span id="m-watts">350 W</span></div>
       <div class="monitor-item"><span>ХОТ-СПОТ GPU</span><span id="m-temp">64°C</span></div>
       <div class="monitor-item"><span>ШИНА PCIe</span><span>x16 4.0</span></div>
@@ -57,14 +71,17 @@
     </div>
 
     <div class="console-box" id="m-console"></div>
-    
+
     <div class="progress-bar-wrap">
       <div class="progress-bar-fill" id="m-progress"></div>
     </div>
 
     <button type="button" class="action-btn buy-btn" id="m-finish-btn" style="display:none;" onclick="finishAndSend()">
-      💸 Сдать работу боту
+      💸 Забрать оплату
     </button>
+    <div class="card-sub" style="margin-top:8px;text-align:center;">
+      Оплата уходит в баланс сразу. Окно останется открытым — закрывает его только крестик ✕.
+    </div>
   </aside>
 
   <!-- Скрипт приложения -->
