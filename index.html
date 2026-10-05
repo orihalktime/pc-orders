@@ -38,16 +38,6 @@
     <div class="stat-pill"><div class="label">SSD</div><div class="val" id="val-ssd">T1</div></div>
   </section>
 
-  <!-- Очередь синхронизации с чатом: авторитетный баланс меняет бот -->
-  <section class="sync-bar">
-    <span class="sync-badge" id="sync-badge">✅ Синхронизировано</span>
-  </section>
-  <section class="sync-panel" id="sync-panel" style="display:none;">
-    <div class="card-sub">Отправь команду в чат — баланс и тиры обновит бот. Приложение останется открытым.</div>
-    <code class="sync-text" id="sync-text"></code>
-    <button type="button" class="action-btn" id="sync-copy">📋 Скопировать команду</button>
-  </section>
-
   <!-- Раздел: Биржа -->
   <main id="tab-orders" class="tab-content active">
     <div id="orders-container"></div>
@@ -77,10 +67,10 @@
     </div>
 
     <button type="button" class="action-btn buy-btn" id="m-finish-btn" style="display:none;" onclick="finishAndSend()">
-      💸 Забрать оплату
+      💸 Сдать контракт
     </button>
     <div class="card-sub" style="margin-top:8px;text-align:center;">
-      Оплата уходит в баланс сразу. Окно останется открытым — закрывает его только крестик ✕.
+      Оплату начислит бот: приложение откроет чат с командой сдачи по номеру слота.
     </div>
   </aside>
 

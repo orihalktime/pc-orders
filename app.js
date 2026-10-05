@@ -1,28 +1,42 @@
 /* ==========================================================================
    TELEGRAM WEB APP — EXPLORER STATION
-   Бесшовный режим: покупки и сдача заказов БЕЗ вылета из приложения.
-   Окно закрывает ТОЛЬКО пользователь крестиком ✕: ни tg.close(), ни редиректов,
-   ни sendData (он закрывает окно), ни fetch к бэкенду (Mixed Content: бот живёт
-   на HTTP без SSL, а приложение — на HTTPS).
-   Авторитетный источник — чат: бот каждый раз генерирует свежие параметры профиля
-   и битовую маску слотов в адрес приложения. Локально состояние живёт в
-   localStorage и в CloudStorage Telegram (пассивный синхрон-приёмник клиента).
+   Награды и цены приходят С СЕРВЕРА: бот подставляет точные суммы слотов (o1r/o1s…)
+   и тиры в адрес приложения. Клиент ничего не придумывает и не решает — он только
+   показывает цифры, а кнопки отправляют бота deep-link'ом по номеру слота.
+   Окно закрывает сам пользователь крестиком ✕ либо бот после открытия чата.
    ========================================================================== */
 
 const tg = window.Telegram?.WebApp;
 if (tg) {
   tg.ready();
   tg.expand();
-  // Свайп вниз и подтверждение закрытия: приложение остаётся открытым, пока
-  // пользователь не нажмёт ✕ сам.
   if (typeof tg.disableVerticalSwipes === 'function') tg.disableVerticalSwipes();
-  if (typeof tg.enableClosingConfirmation === 'function') tg.enableClosingConfirmation();
 }
+
+// Юзернейм бота для deep-link'ов. Бот подставляет его в адрес (?bot=…),
+// значение ниже — запасной вариант на случай открытия ссылки без параметра.
+const DEFAULT_BOT_USERNAME = 'npe90_test_bot';
 
 const SLOT_COUNT = 3;
 const SLOT_NAMES = ['🎬 Рендер', '🧠 Нейросеть', '⚙️ Ядро ОС'];
 const LS_KEY = 'pc-orders:state';
 const CS_KEY = 'pc_orders_v2'; // ключ в CloudStorage Telegram (лимит значения — 1 КБ)
+
+// Лестница цен из HardwareCatalog.cs (NextTierPrices): индекс i — цена перехода
+// с тира i+1 на тир i+2. Все 8 категорий используют её общую, поэтому витрина
+// Web App показывает ровно ту же сумму, что списывает бот в BuyNext.
+const TIER_PRICES = [
+  100, 160, 250, 380, 600, 930, 1450, 2250, 3500, 4000, 4650, 5350, 6200, 7150, 8250,
+  9500, 11000, 13000, 15000, 17000, 19500, 22500, 26000, 30000, 35000, 38500, 42500,
+  46500, 51000, 55500, 61000, 67000, 73000, 80000, 88000, 96500, 110000, 120000, 130000,
+  140000, 155000, 170000, 185000, 200000, 225000, 245000, 270000, 300000, 330000, 365000,
+  405000, 450000, 495000, 550000, 605000, 670000, 740000, 820000, 910000, 1050000, 1150000,
+  1250000, 1400000, 1500000, 1800000, 2100000, 2450000, 2850000, 3300000, 3850000, 4500000,
+  5200000, 6050000, 7050000, 8200000, 9550000, 11500000, 13000000, 15000000, 20000000,
+  25000000, 30500000, 37500000, 46500000, 57000000, 70500000, 87000000, 110000000,
+  135000000, 165000000, 200000000, 250000000, 415000000, 680000000, 1150000000, 1850000000,
+  3050000000, 5000000000, 10000000000
+];
 
 // 1. Параметры, которые бот подставил в адрес при открытии приложения
 const urlParams = new URLSearchParams(window.location.search);
@@ -50,6 +64,12 @@ const player = {
   psu: num(urlParams.get('psu'), 1),
   moboStab: num(urlParams.get('moboStab'), 50)
 };
+
+let botUsername = urlParams.get('bot') || DEFAULT_BOT_USERNAME;
+
+// Точные награды слотов с серверной доски: [{rub, sat}, …]. null — сервер их не прислал
+// (старый чат без параметра), тогда показываем оценочную формулу.
+let serverRewards = null;
 
 // Биты доступности слотов: бит 0 — слот 1, бит 1 — слот 2, бит 2 — слот 3 (7 = все свободны).
 let slotsMask = 7;
@@ -81,30 +101,42 @@ function applyStartParam(raw) {
     maskFromServer = true;
   }
 
+  // Хвост разбирается по числу полей: 16 → минуты кулдаунов, 19 → награды слотов.
   const t = nowSec();
-  for (let i = 0; i < SLOT_COUNT; i++) {
-    if (p.length >= 16 + i) cdUntil[i] = t + num(p[13 + i]) * 60;
+  if (p.length === 16) {
+    for (let i = 0; i < SLOT_COUNT; i++) cdUntil[i] = t + num(p[13 + i]) * 60;
+  } else if (p.length >= 19) {
+    serverRewards = [];
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      serverRewards.push({ rub: num(p[13 + i * 2]), sat: num(p[14 + i * 2]) });
+    }
   }
 }
 
-// Полный URL (кнопка web_app в личке): маска слотов и остатки кулдаунов в секундах
-function applyQuerySlots() {
-  if (!urlParams.has('slots')) return;
-  slotsMask = num(urlParams.get('slots'), 7) & 7;
-  maskFromServer = true;
+// Полный URL (кнопка web_app в личке): маска слотов, кулдауны в секундах, награды слотов.
+function applyQueryState() {
+  if (urlParams.has('slots')) {
+    slotsMask = num(urlParams.get('slots'), 7) & 7;
+    maskFromServer = true;
+  }
+
   const t = nowSec();
   for (let i = 0; i < SLOT_COUNT; i++) {
     const sec = num(urlParams.get('cd' + i));
     if (sec > 0) cdUntil[i] = t + sec;
   }
+
+  if (urlParams.has('o1r')) {
+    serverRewards = [];
+    for (let i = 1; i <= SLOT_COUNT; i++) {
+      serverRewards.push({ rub: num(urlParams.get('o' + i + 'r')), sat: num(urlParams.get('o' + i + 's')) });
+    }
+  }
 }
 
 // 2. Локальный снимок (localStorage + CloudStorage Telegram).
-// Он НЕ источник истины: баланс и тиры всегда приезжают от бота. Хранится только
-// то, что сервер не передаёт, — остатки кулдаунов слотов и очередь действий,
-// которым ещё нужно подтверждение в чате.
-let pending = [];
-
+// Источник истины — бот: баланс, тиры и награды всегда приезжают в адресе.
+// Локально хранится только то, чего сервер не передаёт, — остатки кулдаунов слотов.
 function loadLocal() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch { saved = null; }
@@ -129,18 +161,18 @@ function hydrate(saved) {
       if (value > cdUntil[i]) cdUntil[i] = value;
     }
   }
-  if (Array.isArray(saved.pending)) pending = saved.pending.slice(-20);
+  renderSlots();
 }
 
 function persist() {
-  const snapshot = { uid: player.uid, slotsMask, cdUntil, pending, savedAt: nowSec() };
+  const snapshot = { uid: player.uid, slotsMask, cdUntil, savedAt: nowSec() };
   let json = '';
   try {
     json = JSON.stringify(snapshot);
     localStorage.setItem(LS_KEY, json);
   } catch { /* приватный режим — просто живём без локального кэша */ }
-  // CloudStorage — «фоновый пинг синхронизации»: клиент сам откладывает снимок в облаке
-  // Telegram, чтобы состояние пережило перезапуск приложения. Значение короче 1 КБ.
+  // CloudStorage — фоновый пинг синхронизации: клиент сам откладывает снимок в облаке
+  // Telegram, чтобы кулдауны пережили перезапуск приложения. Значение короче 1 КБ.
   if (tg?.CloudStorage && json.length <= 1024) {
     try { tg.CloudStorage.setItem(CS_KEY, json, () => {}); } catch { /* квота исчерпана */ }
   }
@@ -148,10 +180,7 @@ function persist() {
 
 // 3. Слоты: три параллельных рабочих места с независимым кулдауном
 const slotLeft = (i) => Math.max(0, cdUntil[i] - nowSec());
-const slotReady = (i) => {
-  if (slotLeft(i) > 0) return false;
-  return ((slotsMask >> i) & 1) === 1 || !maskFromServer;
-};
+const slotReady = (i) => slotLeft(i) <= 0 && ((slotsMask >> i) & 1) === 1;
 
 function occupySlot(i) {
   cdUntil[i] = nowSec() + 45 * 60;
@@ -173,7 +202,6 @@ function updateUI() {
   document.getElementById('val-ram').innerText = 'T' + player.ram;
   document.getElementById('val-ssd').innerText = 'T' + player.ssd;
   renderSlots();
-  renderSync();
 }
 
 function renderSlots() {
@@ -186,41 +214,13 @@ function renderSlots() {
     const ready = slotReady(i);
     const pill = document.createElement('div');
     pill.className = 'slot-pill' + (ready ? ' ready' : ' busy');
-    pill.innerHTML = `<span class="slot-name">Слот ${i + 1}</span>` +
-      `<span class="slot-state">${ready ? 'свободен' : `⏳ ${fmtLeft(left)}`}</span>`;
+    pill.innerHTML = `<span class="slot-name">${SLOT_NAMES[i]}</span>` +
+      `<span class="slot-state">${ready ? 'слот свободен' : `⏳ ${fmtLeft(left)}`}</span>`;
     bar.appendChild(pill);
   }
 }
 
-// 5. Очередь синхронизации с чатом: авторитетные изменения проходят через бот,
-// поэтому клиент только показывает готовую команду и копирует её по кнопке.
-function renderSync() {
-  const badge = document.getElementById('sync-badge');
-  const panel = document.getElementById('sync-panel');
-  const text = document.getElementById('sync-text');
-  const copyBtn = document.getElementById('sync-copy');
-  if (!badge || !panel || !text) return;
-
-  const last = pending[pending.length - 1];
-  badge.innerText = pending.length > 0 ? `🔄 Синхронизация: ${pending.length}` : '✅ Синхронизировано';
-  panel.style.display = pending.length > 0 ? 'block' : 'none';
-  if (!last) return;
-
-  text.innerText = last.command;
-  copyBtn.onclick = () => {
-    const done = () => tg?.HapticFeedback?.notificationOccurred('success');
-    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(last.command).then(done, done);
-    else done();
-  };
-}
-
-function queueCommand(kind, payload) {
-  pending.push({ kind, ...payload, command: payload.command, at: nowSec() });
-  persist();
-  renderSync();
-}
-
-// 6. Переключение вкладок
+// 5. Переключение вкладок
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, idx) => {
     b.classList.toggle('active', (name === 'orders' && idx === 0) || (name === 'shop' && idx === 1));
@@ -229,7 +229,19 @@ function switchTab(name) {
   document.getElementById('tab-shop').classList.toggle('active', name === 'shop');
 }
 
-// 7. Каталог магазина (цены и тиры считает сервер, здесь — витрина)
+// Открыть бота с командой и закрыть приложение: деньги, тир и кулдаун считает сервер,
+// локальные цифры после этого всё равно устаревают.
+function sendToBot(command) {
+  const deepLink = `https://t.me/${botUsername}?start=${command}`;
+  if (tg && tg.openTelegramLink) {
+    tg.openTelegramLink(deepLink);
+    tg.close();
+  } else {
+    window.location.href = deepLink;
+  }
+}
+
+// 6. Каталог магазина: цена берётся из общей лестницы TIER_PRICES — ровно то, что списывает BuyNext.
 function getCatalog() {
   return [
     { key: 'gpu', icon: '🎮', name: 'Видеокарта', curTier: player.gpu },
@@ -243,50 +255,36 @@ function getCatalog() {
   ];
 }
 
+function nextPrice(category) {
+  const tier = tierOf(category);
+  return tier >= TIER_PRICES.length ? -1 : TIER_PRICES[tier - 1];
+}
+
 function renderShop() {
   const container = document.getElementById('shop-container');
   container.innerHTML = '';
 
   getCatalog().forEach(item => {
     const nextTier = item.curTier + 1;
-    const price = Math.round(100 * Math.pow(1.5, Math.min(nextTier, 100)));
-    const canBuy = player.rub >= price && nextTier <= 100;
+    const price = nextPrice(item.key);
+    const maxed = price < 0;
+    const canBuy = !maxed && player.rub >= price;
 
     const card = document.createElement('div');
     card.className = 'shop-card';
     card.innerHTML = `
       <div class="card-header">
         <span class="badge">${item.icon} ${item.name}</span>
-        <span class="payout">${nextTier <= 100 ? price.toLocaleString('ru-RU') + ' ₽' : 'MAX'}</span>
+        <span class="payout">${maxed ? 'MAX' : price.toLocaleString('ru-RU') + ' ₽'}</span>
       </div>
-      <div class="card-title">Текущий: Тир ${item.curTier} / 100</div>
-      <div class="card-sub">${nextTier <= 100 ? `Апгрейд до Тира ${nextTier}` : 'Топовая деталь установлена'}</div>
+      <div class="card-title">Текущий: Тир ${item.curTier} / ${TIER_PRICES.length + 1}</div>
+      <div class="card-sub">${maxed ? 'Топовая деталь установлена' : `Апгрейд до Тира ${nextTier}`}</div>
       <button class="action-btn buy-btn" ${canBuy ? '' : 'disabled'} onclick="buyPart('${item.key}')">
-        ${nextTier > 100 ? 'Пройдено полностью' : canBuy ? `Купить тир ${nextTier}` : 'Не хватает рублей'}
+        ${maxed ? 'Пройдено полностью' : canBuy ? `Купить тир ${nextTier}` : 'Не хватает рублей'}
       </button>
     `;
     container.appendChild(card);
   });
-}
-
-// Покупка детали: деньги и тир меняет БОТ (команда уходит в чат), приложение
-// остаётся открытым и сразу показывает предвкусию апгрейда.
-function buyPart(category) {
-  queueCommand('buy', { category, command: `/start buy_${category}` });
-
-  player.rub -= nextPrice(category);
-  bumpTier(category);
-  recomputeLevel();
-
-  updateUI();
-  renderShop();
-  renderOrders();
-  tg?.HapticFeedback?.notificationOccurred('success');
-}
-
-function nextPrice(category) {
-  const tier = tierOf(category) + 1;
-  return Math.round(100 * Math.pow(1.5, Math.min(tier, 100)));
 }
 
 function tierOf(category) {
@@ -296,117 +294,116 @@ function tierOf(category) {
   })[category] || 1;
 }
 
-function bumpTier(category) {
-  if (category === 'gpu') player.gpu++;
-  else if (category === 'cpu') player.cpu++;
-  else if (category === 'mobo') player.mobo++;
-  else if (category === 'cooler') player.cooler++;
-  else if (category === 'ram') player.ram++;
-  else if (category === 'storage') player.ssd++;
-  else if (category === 'psu') player.psu++;
-  else if (category === 'case') player.cases++;
+// Покупка детали: только команда боту, тир и баланс меняет сервер (GameEngine.BuyNext).
+function buyPart(category) {
+  sendToBot(`buy_${category}`);
 }
 
-function recomputeLevel() {
-  player.lvl = Math.max(1, Math.floor((player.cpu + player.gpu + player.ram + player.ssd) / 4));
-}
+// 7. Контракты биржи. Номер в массиве + 1 === слот доски, поэтому заведённый контракт
+// занимает ровно один слот и не блокирует два остальных.
+const contractTemplates = [
+  {
+    id: 'vfx',
+    cat: '3D Рендер',
+    title: 'Рендер взрыва реактора (4K, Blender)',
+    client: 'Студия «Cinematic FX»',
+    desc: 'Срочно дорендерить 120 кадров эффектов взрыва к финальному монтажу. Сцена забита частицами и дымом.',
+    req: () => ({ gpu: Math.max(1, player.lvl), ram: Math.max(1, Math.floor(player.lvl * 0.7)) }),
+    fallback: () => ({ rub: player.lvl * 650 + 400, sat: 0 }),
+    logs: [
+      'Инициализация сцены Blender Cycles...',
+      'Загрузка текстур VRAM 8K OpenEXR...',
+      'Расчёт трассировки лучей (bounces: 12)...',
+      'Рендеринг тайлов 256x256...',
+      'Шумоподавление OptiX AI Denoiser...',
+      'Финальная сборка кадров в видеопоток...'
+    ]
+  },
+  {
+    id: 'lora',
+    cat: 'Нейросети',
+    title: 'Дообучение LoRA модели на 50 000 строк',
+    client: 'Стартап «NeuralMind»',
+    desc: 'Требуется тонкая настройка весов модели на датасете юридических документов. Высокие требования к памяти и чтению диска.',
+    req: () => ({ gpu: Math.max(1, Math.floor(player.lvl * 0.8)), ssd: Math.max(2, Math.floor(player.lvl * 0.75)) }),
+    fallback: () => ({ rub: 0, sat: Math.max(50, Math.floor(player.lvl * 120)) }),
+    logs: [
+      'Чтение датасета с SSD-накопителя (IOPS проверка)...',
+      'Токенизация текстового корпуса...',
+      'Эпоха 1/3: Loss = 2.451...',
+      'Эпоха 2/3: Loss = 1.120...',
+      'Эпоха 3/3: Loss = 0.412...',
+      'Квантование адаптеров LoRA (FP16)...'
+    ]
+  },
+  {
+    id: 'rtos',
+    cat: 'DevOps',
+    title: 'Сборка Real-Time ядра Linux с ЧПУ-модулями',
+    client: 'АО «ПромАвтоматика»',
+    desc: 'Компиляция кастомного RT-Kernel из исходников. Нужна абсолютная стабильность материнской платы, иначе Kernel Panic.',
+    req: () => ({ cpu: Math.max(1, player.lvl), mobo: 45 }),
+    fallback: () => ({ rub: player.lvl * 800 + 500, sat: Math.floor(player.lvl * 30) }),
+    logs: [
+      'Конфигурация Makefile (.config RT_PREEMPT)...',
+      'Компиляция модулей архитектуры (make -j)...',
+      'Сборка драйверов шины CAN и SPI...',
+      'Линковка бинарного образа vmlinuz...',
+      'Генерация initramfs...',
+      'Тест стабильности шины питания платы: OK!'
+    ]
+  }
+];
 
-// 8. Контракты биржи. Номер в массиве + 1 === слот доски, поэтому заведённый
-// контракт занимает ровно один слот и не блокирует два остальных.
-function buildContracts() {
-  return [
-    {
-      id: 'vfx',
-      cat: '3D Рендер',
-      title: 'Рендер взрыва реактора (4K, Blender)',
-      client: 'Студия «Cinematic FX»',
-      desc: 'Срочно дорендерить 120 кадров эффектов взрыва к финальному монтажу. Сцена забита частицами и дымом.',
-      req: { gpu: Math.max(1, player.lvl), ram: Math.max(1, Math.floor(player.lvl * 0.7)) },
-      reward: { rub: player.lvl * 650 + 400, sat: 0 },
-      logs: [
-        'Инициализация сцены Blender Cycles...',
-        'Загрузка текстур VRAM 8K OpenEXR...',
-        'Расчёт трассировки лучей (bounces: 12)...',
-        'Рендеринг тайлов 256x256...',
-        'Шумоподавление OptiX AI Denoiser...',
-        'Финальная сборка кадров в видеопоток...'
-      ]
-    },
-    {
-      id: 'lora',
-      cat: 'Нейросети',
-      title: 'Дообучение LoRA модели на 50 000 строк',
-      client: 'Стартап «NeuralMind»',
-      desc: 'Требуется тонкая настройка весов модели на датасете юридических документов. Высокие требования к памяти и чтению диска.',
-      req: { gpu: Math.max(1, Math.floor(player.lvl * 0.8)), ssd: Math.max(2, Math.floor(player.lvl * 0.75)) },
-      reward: { rub: 0, sat: Math.max(50, Math.floor(player.lvl * 120)) },
-      logs: [
-        'Чтение датасета с SSD-накопителя (IOPS проверка)...',
-        'Токенизация текстового корпуса...',
-        'Эпоха 1/3: Loss = 2.451...',
-        'Эпоха 2/3: Loss = 1.120...',
-        'Эпоха 3/3: Loss = 0.412...',
-        'Квантование адаптеров LoRA (FP16)...'
-      ]
-    },
-    {
-      id: 'rtos',
-      cat: 'DevOps',
-      title: 'Сборка Real-Time ядра Linux с ЧПУ-модулями',
-      client: 'АО «ПромАвтоматика»',
-      desc: 'Компиляция кастомного RT-Kernel из исходников. Нужна абсолютная стабильность материнской платы, иначе Kernel Panic.',
-      req: { cpu: Math.max(1, player.lvl), mobo: 45 },
-      reward: { rub: player.lvl * 800 + 500, sat: Math.floor(player.lvl * 30) },
-      logs: [
-        'Конфигурация Makefile (.config RT_PREEMPT)...',
-        'Компиляция модулей архитектуры (make -j)...',
-        'Сборка драйверов шины CAN и SPI...',
-        'Линковка бинарного образа vmlinuz...',
-        'Генерация initramfs...',
-        'Тест стабильности шины питания платы: OK!'
-      ]
-    }
-  ];
-}
-
-let contracts = buildContracts();
 let currentOrder = null;
 let currentSlot = -1;
+
+// Награда слота: сперва точная серверная, иначе оценочная формула (витрина без бэкенда).
+function rewardOf(i) {
+  if (serverRewards && serverRewards[i]) {
+    const r = serverRewards[i];
+    return (r.rub > 0 || r.sat > 0) ? { rub: r.rub, sat: r.sat } : contractTemplates[i].fallback();
+  }
+  return contractTemplates[i].fallback();
+}
 
 function renderOrders() {
   const container = document.getElementById('orders-container');
   container.innerHTML = '';
 
-  contracts.forEach((c, i) => {
+  contractTemplates.forEach((c, i) => {
     let canTake = true;
     let reqsHtml = '';
     const left = slotLeft(i);
     const free = slotReady(i);
+    const req = c.req();
 
-    if (c.req.gpu) {
-      const ok = player.gpu >= c.req.gpu; if (!ok) canTake = false;
-      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">GPU: T${c.req.gpu} ${ok ? '✓' : '✗'}</div>`;
+    if (req.gpu) {
+      const ok = player.gpu >= req.gpu; if (!ok) canTake = false;
+      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">GPU: T${req.gpu} ${ok ? '✓' : '✗'}</div>`;
     }
-    if (c.req.cpu) {
-      const ok = player.cpu >= c.req.cpu; if (!ok) canTake = false;
-      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">CPU: T${c.req.cpu} ${ok ? '✓' : '✗'}</div>`;
+    if (req.cpu) {
+      const ok = player.cpu >= req.cpu; if (!ok) canTake = false;
+      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">CPU: T${req.cpu} ${ok ? '✓' : '✗'}</div>`;
     }
-    if (c.req.ram) {
-      const ok = player.ram >= c.req.ram; if (!ok) canTake = false;
-      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">RAM: T${c.req.ram} ${ok ? '✓' : '✗'}</div>`;
+    if (req.ram) {
+      const ok = player.ram >= req.ram; if (!ok) canTake = false;
+      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">RAM: T${req.ram} ${ok ? '✓' : '✗'}</div>`;
     }
-    if (c.req.ssd) {
-      const ok = player.ssd >= c.req.ssd; if (!ok) canTake = false;
-      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">SSD: T${c.req.ssd} ${ok ? '✓' : '✗'}</div>`;
+    if (req.ssd) {
+      const ok = player.ssd >= req.ssd; if (!ok) canTake = false;
+      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">SSD: T${req.ssd} ${ok ? '✓' : '✗'}</div>`;
     }
-    if (c.req.mobo) {
-      const ok = player.moboStab >= c.req.mobo; if (!ok) canTake = false;
-      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">Плата: ${c.req.mobo}% ${ok ? '✓' : '✗'}</div>`;
+    if (req.mobo) {
+      const ok = player.moboStab >= req.mobo; if (!ok) canTake = false;
+      reqsHtml += `<div class="req-item ${ok ? 'ok' : 'fail'}">Плата: ${req.mobo}% ${ok ? '✓' : '✗'}</div>`;
     }
 
+    const reward = rewardOf(i);
     let payText = '';
-    if (c.reward.rub > 0) payText += `${c.reward.rub.toLocaleString('ru-RU')} ₽ `;
-    if (c.reward.sat > 0) payText += `${c.reward.sat.toLocaleString('ru-RU')} SAT`;
+    if (reward.rub > 0) payText += `${reward.rub.toLocaleString('ru-RU')} ₽ `;
+    if (reward.sat > 0) payText += `${reward.sat.toLocaleString('ru-RU')} SAT`;
+    if (!payText) payText = 'оплата уточняется';
 
     const card = document.createElement('div');
     card.className = `order-card ${canTake && free ? '' : 'locked'}`;
@@ -428,7 +425,7 @@ function renderOrders() {
 }
 
 function startExecution(index) {
-  const order = contracts[index];
+  const order = contractTemplates[index];
   if (!order || !slotReady(index)) return;
 
   currentOrder = order;
@@ -444,7 +441,6 @@ function startExecution(index) {
   consoleBox.innerHTML = '';
   progressBar.style.width = '0%';
   finishBtn.style.display = 'none';
-  finishBtn.disabled = false;
 
   let step = 0;
   const totalSteps = order.logs.length;
@@ -468,51 +464,45 @@ function startExecution(index) {
       doneLine.innerText = `[SUCCESS] Контракт успешно завершён без сбоев.`;
       consoleBox.appendChild(doneLine);
       finishBtn.style.display = 'block';
-      const unit = order.reward.rub > 0 ? '₽' : 'SAT';
-      finishBtn.innerText = `💸 Забрать оплату (+${(order.reward.rub || order.reward.sat).toLocaleString('ru-RU')} ${unit})`;
+      const reward = rewardOf(index);
+      const unit = reward.rub > 0 ? '₽' : 'SAT';
+      const amount = reward.rub > 0 ? reward.rub : reward.sat;
+      finishBtn.innerText = `💸 Сдать контракт и забрать ${amount.toLocaleString('ru-RU')} ${unit}`;
     }
   }, 700);
 }
 
-// Сдача контракта: приложение НЕ закрывается. Награда начисляется локально и
-// сразу же, а авторитетную запись бот делает по команде /start ord_{слот}_...
+// Сдача контракта: боту уходит ТОЛЬКО номер слота (ord_1 / ord_2 / ord_3), выплату
+// начисляет сервер по доске. Локально слот гасим сразу, чтобы приложение не показало
+// контракт повторно до перезапуска.
 function finishAndSend() {
-  if (!currentOrder || currentSlot < 0) return;
-
-  player.rub += currentOrder.reward.rub;
-  player.sat += currentOrder.reward.sat;
-
-  const command = `/start ord_${currentSlot + 1}_${currentOrder.id}_${currentOrder.reward.rub}_${currentOrder.reward.sat}`;
-  queueCommand('order', { slot: currentSlot + 1, command });
-  occupySlot(currentSlot);
+  if (currentSlot < 0) return;
 
   tg?.HapticFeedback?.notificationOccurred('success');
+  occupySlot(currentSlot);
 
-  // Возврат к списку — внутри приложения. Ни редиректа, ни закрытия окна.
-  document.getElementById('execution-modal').style.display = 'none';
+  const slotNumber = currentSlot + 1;
   currentOrder = null;
   currentSlot = -1;
 
-  updateUI();
-  renderShop();
   renderOrders();
+  sendToBot(`ord_${slotNumber}`);
 }
 
-// 9. Запуск
+// 8. Запуск
 applyStartParam(startParam);
-applyQuerySlots();
+applyQueryState();
 loadLocal();
-contracts = buildContracts();
 updateUI();
 renderOrders();
 renderShop();
 
 // Тик кулдаунов: раз в секунду обновляем полоску слотов, а список перерисовываем
 // только когда какой-то слот реально освободился.
-let lastFreeStates = contracts.map((_, i) => slotReady(i)).join(',');
+let lastFreeStates = contractTemplates.map((_, i) => slotReady(i)).join(',');
 setInterval(() => {
   renderSlots();
-  const freeStates = contracts.map((_, i) => slotReady(i)).join(',');
+  const freeStates = contractTemplates.map((_, i) => slotReady(i)).join(',');
   if (freeStates !== lastFreeStates) {
     lastFreeStates = freeStates;
     renderOrders();
