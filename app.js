@@ -1,12 +1,18 @@
 /* ==========================================================================
-   ЛОГИКА TELEGRAM WEB APP (EXPLORER STATION) v2.0
-   Фиксы: Честный кулдаун 45м, отображение SAT, интерактивный риск перегрева
+   ЛОГИКА TELEGRAM WEB APP (EXPLORER STATION) v3.0
+   - Послотовые независимые кулдауны (3 отдельных слота по 45 мин)
+   - Автосохранение в Telegram CloudStorage (закрытие по крестику сохраняет всё)
+   - Обновление интерфейса без вылетов и без редиректов
    ========================================================================== */
 
 const tg = window.Telegram?.WebApp;
 if (tg) {
   tg.ready();
   tg.expand();
+  // Предупреждение при случайном свайпе/закрытии
+  if (tg.enableClosingConfirmation) {
+    tg.enableClosingConfirmation();
+  }
 }
 
 // 1. Инициализация игрока
@@ -14,7 +20,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const startParam = tg?.initDataUnsafe?.start_param || "";
 
 let player = {
-  uid: urlParams.get('uid') || '0',
+  uid: urlParams.get('uid') || tg?.initDataUnsafe?.user?.id || '0',
   rub: parseInt(urlParams.get('rub')) || 0,
   sat: parseInt(urlParams.get('sat')) || 0,
   lvl: parseInt(urlParams.get('tier')) || 1,
@@ -29,6 +35,7 @@ let player = {
   moboStab: parseInt(urlParams.get('moboStab')) || 50
 };
 
+// Парсинг startapp из групп
 if (startParam && startParam.includes('_')) {
   const parts = startParam.split('_').map(x => parseInt(x) || 0);
   if (parts.length >= 12) {
@@ -39,7 +46,32 @@ if (startParam && startParam.includes('_')) {
   }
 }
 
-// 2. Обновление интерфейса (Рубли + Сатоши)
+// Проверяем сохранённые локально данные (если игрок закрыл по крестику ранее)
+const localSaved = localStorage.getItem('player_progress_' + player.uid);
+if (localSaved) {
+  try {
+    const savedData = JSON.parse(localSaved);
+    // Применяем сохранённый прогресс, если он новее
+    if (savedData.rub >= player.rub) player.rub = savedData.rub;
+    if (savedData.sat >= player.sat) player.sat = savedData.sat;
+    if (savedData.gpu >= player.gpu) player.gpu = savedData.gpu;
+    if (savedData.cpu >= player.cpu) player.cpu = savedData.cpu;
+    if (savedData.ram >= player.ram) player.ram = savedData.ram;
+    if (savedData.ssd >= player.ssd) player.ssd = savedData.ssd;
+  } catch (e) {}
+}
+
+// 2. Фоновое сохранение прогресса (при любом изменении)
+function saveProgress() {
+  const data = JSON.stringify(player);
+  localStorage.setItem('player_progress_' + player.uid, data);
+  // Сохраняем в защищённое облако Telegram
+  if (tg?.CloudStorage) {
+    tg.CloudStorage.setItem('station_' + player.uid, data);
+  }
+}
+
+// 3. Обновление UI
 function updateUI() {
   document.getElementById('h-rub').innerHTML = `${player.rub.toLocaleString()} ₽ &nbsp;·&nbsp; <span style="color:#e3b341">🪙 ${player.sat.toLocaleString()} SAT</span>`;
   document.getElementById('val-cpu').innerText = 'T' + player.cpu;
@@ -49,7 +81,7 @@ function updateUI() {
 }
 updateUI();
 
-// 3. Табы
+// 4. Переключение табов
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, idx) => {
     b.classList.toggle('active', (name === 'orders' && idx === 0) || (name === 'shop' && idx === 1));
@@ -58,13 +90,17 @@ function switchTab(name) {
   document.getElementById('tab-shop').classList.toggle('active', name === 'shop');
 }
 
-// 4. Логика Кулдауна (45 минут)
+// 5. Логика послотового кулдауна (45 минут на каждый слот отдельно)
 const COOLDOWN_MS = 45 * 60 * 1000;
 
-function getCooldownLeft() {
-  const lastTime = parseInt(localStorage.getItem('last_order_time_' + player.uid)) || 0;
+function getSlotCooldown(slotIndex) {
+  const lastTime = parseInt(localStorage.getItem(`slot_cd_${player.uid}_${slotIndex}`)) || 0;
   const diff = Date.now() - lastTime;
   return diff < COOLDOWN_MS ? COOLDOWN_MS - diff : 0;
+}
+
+function setSlotCooldown(slotIndex) {
+  localStorage.setItem(`slot_cd_${player.uid}_${slotIndex}`, Date.now());
 }
 
 function formatTime(ms) {
@@ -74,7 +110,7 @@ function formatTime(ms) {
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
-// 5. Магазин
+// 6. Магазин
 function getCatalog() {
   return [
     { key: "gpu", icon: "🎮", name: "Видеокарта", curTier: player.gpu },
@@ -105,7 +141,7 @@ function renderShop() {
         <span class="payout">${nextTier <= 100 ? price.toLocaleString() + ' ₽' : 'MAX'}</span>
       </div>
       <div class="card-title">Текущий: Тир ${item.curTier} / 100</div>
-      <div class="card-sub">${nextTier <= 100 ? `Апгрейд до Тира ${nextTier}` : 'Топовая деталь'}</div>
+      <div class="card-sub">${nextTier <= 100 ? `Апгрейд до Тира ${nextTier}` : 'Топовая деталь установлена'}</div>
       <button class="action-btn buy-btn" ${canBuy ? '' : 'disabled'} onclick="buyPartLive('${item.key}', ${price})">
         ${nextTier > 100 ? 'Пройдено' : canBuy ? `Купить тир ${nextTier}` : 'Не хватает рублей'}
       </button>
@@ -129,61 +165,47 @@ function buyPartLive(category, price) {
 
   player.lvl = Math.max(1, Math.floor((player.cpu + player.gpu + player.ram + player.ssd) / 4));
 
+  saveProgress();
   updateUI();
   renderShop();
   renderOrders();
   if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 }
 
-// 6. База заказов
+// 7. База контрактов (3 независимых слота)
 const contractsPool = [
   {
+    slot: 0,
     id: "vfx",
     cat: "3D Рендер",
     title: "Рендер сцены фильма (4K Cycles)",
     client: "Студия «Cinematic FX»",
-    desc: "120 тяжёлых кадров симуляции дыма и огня. Опасность сильного нагрева GPU!",
+    desc: "120 кадров симуляции дыма и взрыва. Опасность перегрева GPU!",
     req: { gpu: Math.max(1, player.lvl), ram: Math.max(1, Math.floor(player.lvl * 0.7)) },
     reward: { rub: player.lvl * 650 + 400, sat: 0 },
-    logs: [
-      "Загрузка текстур VRAM 8K OpenEXR...",
-      "Инициализация BVH-дерева геометрии...",
-      "Рендеринг тайлов 256x256 (bounces: 12)...",
-      "Денойзинг OptiX AI Denoiser...",
-      "Финальный композитинг кадров..."
-    ]
+    logs: ["Инициализация сцены...", "Загрузка текстур VRAM 8K...", "Рендеринг тайлов 256x256...", "Денойзинг OptiX AI...", "Финальный композитинг..."]
   },
   {
+    slot: 1,
     id: "lora",
     cat: "Нейросети",
     title: "Обучение LoRA модели на датасете",
     client: "Лаборатория «NeuralMind»",
-    desc: "Тонкая калибровка матрицы весов. Высокая нагрузка на SSD и подсистему памяти.",
+    desc: "Тонкая калибровка матрицы весов. Высокая нагрузка на SSD и память.",
     req: { gpu: Math.max(1, Math.floor(player.lvl * 0.8)), ssd: Math.max(2, Math.floor(player.lvl * 0.75)) },
     reward: { rub: 0, sat: Math.max(50, Math.floor(player.lvl * 120)) },
-    logs: [
-      "Чтение датасета с SSD накопителя (IOPS тест)...",
-      "Прямой проход: Эпоха 1/3 (Loss = 2.14)...",
-      "Обратное распространение градиента...",
-      "Эпоха 3/3 (Loss = 0.38)...",
-      "Экспорт чекпоинта адаптера LoRA..."
-    ]
+    logs: ["Чтение датасета с SSD (IOPS)...", "Прямой проход: Эпоха 1/3...", "Обратное распространение градиента...", "Эпоха 3/3 (Loss = 0.38)...", "Экспорт чекпоинта..."]
   },
   {
+    slot: 2,
     id: "rtos",
     cat: "DevOps",
-    title: "Компиляция Real-Time ядра Linux",
+    title: "Компиляция ядра Linux RT_PREEMPT",
     client: "АО «ПромАвтоматика»",
-    desc: "Сборка ядра RT_PREEMPT для станков. При низкой стабильности платы возможен Kernel Panic!",
+    desc: "Сборка Real-Time ядра. При низкой стабильности платы возможен Kernel Panic!",
     req: { cpu: Math.max(1, player.lvl), mobo: 45 },
     reward: { rub: player.lvl * 800 + 500, sat: Math.floor(player.lvl * 30) },
-    logs: [
-      "Парсинг Kconfig и .config опций...",
-      "Компиляция модулей архитектуры (make -j)...",
-      "Линковка бинарного образа vmlinuz...",
-      "Сборка initramfs и драйверов CAN...",
-      "Тест тактовой частоты шины: OK!"
-    ]
+    logs: ["Парсинг опций .config...", "Компиляция модулей ядра...", "Линковка vmlinuz...", "Сборка initramfs...", "Тест тактовой частоты шины: OK!"]
   }
 ];
 
@@ -195,20 +217,9 @@ function renderOrders() {
   const container = document.getElementById('orders-container');
   container.innerHTML = '';
 
-  const cdLeft = getCooldownLeft();
-  if (cdLeft > 0) {
-    const banner = document.createElement('div');
-    banner.style.cssText = "background:var(--surface-1); border:1px solid var(--border-active); border-radius:12px; padding:16px; text-align:center; margin-bottom:12px;";
-    banner.innerHTML = `
-      <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">БИРЖА НА ПЕРЕРЫВЕ</div>
-      <div style="font-size:22px; font-weight:bold; font-family:var(--font-mono); color:var(--color-warning);">⏳ ${formatTime(cdLeft)}</div>
-      <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Ожидание обновления пула заказов</div>
-    `;
-    container.appendChild(banner);
-  }
-
   contractsPool.forEach(c => {
-    let canTake = cdLeft === 0;
+    const cd = getSlotCooldown(c.slot);
+    let canTake = cd === 0;
     let reqsHtml = '';
 
     if (c.req.gpu) {
@@ -248,14 +259,14 @@ function renderOrders() {
       <div class="card-desc">${c.desc}</div>
       <div class="req-list">${reqsHtml}</div>
       <button class="action-btn" ${canTake ? '' : 'disabled'} onclick='startExecution(${JSON.stringify(c)})'>
-        ${cdLeft > 0 ? 'Кулдаун' : canTake ? 'Взять контракт в работу' : 'Железо не подходит'}
+        ${cd > 0 ? `⏳ Кулдаун слота: ${formatTime(cd)}` : canTake ? 'Взять контракт в работу' : 'Железо не подходит'}
       </button>
     `;
     container.appendChild(card);
   });
 }
 
-// 7. Интерактивное выполнение заказа (с риском перегрева и QTE)
+// 8. Выполнение заказа
 function startExecution(order) {
   currentOrder = order;
   document.getElementById('execution-modal').style.display = 'flex';
@@ -272,22 +283,20 @@ function startExecution(order) {
   let step = 0;
   const totalSteps = order.logs.length;
   let curTemp = 60 + Math.floor(Math.random() * 10);
-  let failed = false;
 
   execInterval = setInterval(() => {
-    if (step < totalSteps && !failed) {
+    if (step < totalSteps) {
       const logLine = document.createElement('div');
       logLine.innerText = `> ${order.logs[step]}`;
       consoleBox.appendChild(logLine);
       consoleBox.scrollTop = consoleBox.scrollHeight;
 
-      // Растёт температура и нагрузка
       curTemp += Math.floor(Math.random() * 6) + 2;
       document.getElementById('m-watts').innerText = (340 + Math.floor(Math.random() * 90)) + ' W';
       document.getElementById('m-temp').innerText = `${curTemp}°C`;
 
-      // ⚠️ ИНТЕРАКТИВНОЕ СОБЫТИЕ: Перегрев (QTE) на 3-м шаге
-      if (step === 2 && curTemp > 78) {
+      // QTE перегрева на 3 шаге
+      if (step === 2 && curTemp > 76) {
         clearInterval(execInterval);
         triggerQteEvent();
         return;
@@ -295,7 +304,7 @@ function startExecution(order) {
 
       step++;
       progressBar.style.width = Math.floor((step / totalSteps) * 100) + '%';
-    } else if (!failed) {
+    } else {
       clearInterval(execInterval);
       const doneLine = document.createElement('div');
       doneLine.style.color = 'var(--color-success)';
@@ -307,7 +316,6 @@ function startExecution(order) {
   }, 800);
 }
 
-// Интерактивное событие: спасение рига от перегрева
 function triggerQteEvent() {
   const consoleBox = document.getElementById('m-console');
   const warn = document.createElement('div');
@@ -323,7 +331,6 @@ function triggerQteEvent() {
   consoleBox.scrollTop = consoleBox.scrollHeight;
   if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
 
-  // Таймер на реакцию 3.5 секунды
   qteTimeout = setTimeout(() => {
     failContract("💥 ПЕРЕГРЕВ: Риг ушёл в защиту (Thermal Shutdown). Заказ сорван!");
   }, 3500);
@@ -337,13 +344,12 @@ window.resolveQte = function() {
   const consoleBox = document.getElementById('m-console');
   const ok = document.createElement('div');
   ok.style.color = "var(--color-primary)";
-  ok.innerText = "❄️ Охлаждение на максимуме! Температура сбита до 68°C. Продолжаем...";
+  ok.innerText = "❄️ Охлаждение на максимуме! Температура сбита. Продолжаем...";
   consoleBox.appendChild(ok);
 
   document.getElementById('m-temp').innerText = "68°C";
   if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
-  // Возобновляем рендер
   let step = 3;
   const totalSteps = currentOrder.logs.length;
   execInterval = setInterval(() => {
@@ -378,7 +384,10 @@ function failContract(reason) {
   failLine.innerText = reason;
   consoleBox.appendChild(failLine);
 
-  localStorage.setItem('last_order_time_' + player.uid, Date.now()); // Кулдаун сгорает
+  // Сжигаем кулдаун только для этого слота
+  setSlotCooldown(currentOrder.slot);
+  saveProgress();
+
   if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
 
   setTimeout(() => {
@@ -388,15 +397,18 @@ function failContract(reason) {
   }, 2500);
 }
 
-// 8. Сдача работы
+// 9. Сдача работы
 function finishAndSend() {
   if (!currentOrder) return;
 
   player.rub += currentOrder.reward.rub;
   player.sat += currentOrder.reward.sat;
 
-  // Записываем время сдачи контракта (старт 45 мин КД)
-  localStorage.setItem('last_order_time_' + player.uid, Date.now());
+  // Кулдаун вешается ТОЛЬКО на этот слот
+  setSlotCooldown(currentOrder.slot);
+
+  // Автосохранение
+  saveProgress();
 
   updateUI();
   renderShop();
@@ -407,10 +419,14 @@ function finishAndSend() {
   currentOrder = null;
 }
 
-// Таймер обновления кулдауна на экране каждую секунду
+// Ежесекундное обновление таймеров слотов
 setInterval(() => {
-  if (getCooldownLeft() > 0 && !currentOrder) {
-    renderOrders();
+  if (!currentOrder) {
+    let anyCd = false;
+    for (let i = 0; i < 3; i++) {
+      if (getSlotCooldown(i) > 0) anyCd = true;
+    }
+    if (anyCd) renderOrders();
   }
 }, 1000);
 
